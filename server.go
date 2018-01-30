@@ -151,6 +151,8 @@ type Server struct {
 	// DefaultConcurrency is used if not set.
 	Concurrency int
 
+	// TLS configuration preset
+	TLSConfig *tls.Config
 	// Whether to disable keep-alive connections.
 	//
 	// The server will close all the incoming connections after sending
@@ -1218,7 +1220,7 @@ func (s *Server) ListenAndServeTLSEmbed(addr string, certData, keyData []byte) e
 //
 // certFile and keyFile are paths to TLS certificate and key files.
 func (s *Server) ServeTLS(ln net.Listener, certFile, keyFile string) error {
-	lnTLS, err := newTLSListener(ln, certFile, keyFile)
+	lnTLS, err := newTLSListener(ln, certFile, keyFile, s.TLSConfig)
 	if err != nil {
 		return err
 	}
@@ -1236,12 +1238,15 @@ func (s *Server) ServeTLSEmbed(ln net.Listener, certData, keyData []byte) error 
 	return s.Serve(lnTLS)
 }
 
-func newTLSListener(ln net.Listener, certFile, keyFile string) (net.Listener, error) {
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return nil, fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+func newTLSListener(ln net.Listener, certFile, keyFile string, tlsCfg *tls.Config) (net.Listener, error) {
+	if certFile != "" && keyFile != "" {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+		}
+		return newCertListener(ln, &cert), nil
 	}
-	return newCertListener(ln, &cert), nil
+	return tls.NewListener(ln, tlsCfg), nil
 }
 
 func newTLSListenerEmbed(ln net.Listener, certData, keyData []byte) (net.Listener, error) {
