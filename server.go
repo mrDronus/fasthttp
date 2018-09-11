@@ -153,8 +153,6 @@ type Server struct {
 	// DefaultConcurrency is used if not set.
 	Concurrency int
 
-	// TLS configuration preset
-	TLSConfig *tls.Config
 	// Whether to disable keep-alive connections.
 	//
 	// The server will close all the incoming connections after sending
@@ -288,7 +286,7 @@ type Server struct {
 	// By default standard logger from log package is used.
 	Logger Logger
 
-	tlsConfig *tls.Config
+	TLSConfig *tls.Config
 
 	concurrency      uint32
 	concurrencyCh    chan struct{}
@@ -1242,6 +1240,21 @@ func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	return s.ServeTLS(ln, certFile, keyFile)
 }
 
+// ListenAndServeTLSConfig serves HTTPS requests from the given TCP4 addr.
+//
+// tlsConfig is a preconfigured instance of tls.Config.
+//
+// Pass custom listener to Serve if you need listening on non-TCP4 media
+// such as IPv6.
+func (s *Server) ListenAndServeTLSConfig(addr string, tlsConfig *tls.Config) error {
+	ln, err := net.Listen("tcp4", addr)
+	if err != nil {
+		return err
+	}
+	s.TLSConfig = tlsConfig
+	return s.ServeTLSConfig(ln)
+}
+
 // ListenAndServeTLSEmbed serves HTTPS requests from the given TCP4 addr.
 //
 // certData and keyData must contain valid TLS certificate and key data.
@@ -1270,13 +1283,23 @@ func (s *Server) ServeTLS(ln net.Listener, certFile, keyFile string) error {
 	if err != nil && err != errNoCertOrKeyProvided {
 		return err
 	}
-	if s.tlsConfig == nil {
+	if s.TLSConfig == nil {
 		return errNoCertOrKeyProvided
 	}
-	s.tlsConfig.BuildNameToCertificate()
+	s.TLSConfig.BuildNameToCertificate()
 
 	return s.Serve(
-		tls.NewListener(ln, s.tlsConfig),
+		tls.NewListener(ln, s.TLSConfig),
+	)
+}
+
+func (s *Server) ServeTLSConfig(ln net.Listener) error {
+	if s.TLSConfig == nil {
+		return errNoCertOrKeyProvided
+	}
+	s.TLSConfig.BuildNameToCertificate()
+	return s.Serve(
+		tls.NewListener(ln, s.TLSConfig),
 	)
 }
 
@@ -1291,13 +1314,13 @@ func (s *Server) ServeTLSEmbed(ln net.Listener, certData, keyData []byte) error 
 	if err != nil && err != errNoCertOrKeyProvided {
 		return err
 	}
-	if s.tlsConfig == nil {
+	if s.TLSConfig == nil {
 		return errNoCertOrKeyProvided
 	}
-	s.tlsConfig.BuildNameToCertificate()
+	s.TLSConfig.BuildNameToCertificate()
 
 	return s.Serve(
-		tls.NewListener(ln, s.tlsConfig),
+		tls.NewListener(ln, s.TLSConfig),
 	)
 }
 
@@ -1315,15 +1338,15 @@ func (s *Server) AppendCert(certFile, keyFile string) error {
 		return fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 	}
 
-	if s.tlsConfig == nil {
-		s.tlsConfig = &tls.Config{
+	if s.TLSConfig == nil {
+		s.TLSConfig = &tls.Config{
 			Certificates:             []tls.Certificate{cert},
 			PreferServerCipherSuites: true,
 		}
 		return nil
 	}
 
-	s.tlsConfig.Certificates = append(s.tlsConfig.Certificates, cert)
+	s.TLSConfig.Certificates = append(s.TLSConfig.Certificates, cert)
 	return nil
 }
 
@@ -1339,15 +1362,15 @@ func (s *Server) AppendCertEmbed(certData, keyData []byte) error {
 			len(certData), len(keyData), err)
 	}
 
-	if s.tlsConfig == nil {
-		s.tlsConfig = &tls.Config{
+	if s.TLSConfig == nil {
+		s.TLSConfig = &tls.Config{
 			Certificates:             []tls.Certificate{cert},
 			PreferServerCipherSuites: true,
 		}
 		return nil
 	}
 
-	s.tlsConfig.Certificates = append(s.tlsConfig.Certificates, cert)
+	s.TLSConfig.Certificates = append(s.TLSConfig.Certificates, cert)
 	return nil
 }
 
